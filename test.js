@@ -92,14 +92,21 @@ describe('Faux-Knox', function(){
         done();
       });
     });
+    it('should put a buffer to encoded uri path', function(done){
+      var buff = new Buffer(9000);
+      client.putBuffer(buff, encodeURIComponent('from/buffer land/dev/null null.text'), {'Content-Type':'text/plain'}, function(err, res){
+        res.should.have.property('statusCode', 201);
+        done();
+      });
+    });
   });
   describe('deleteFile', function(){
     before(function(done){
       client.putFile('./test_files/put/fort_knox_tank.jpg', 'to/a/new/path/here/tank.jpg', done);
     });
     it('should delete a file', function(done){
-      function fileExists(value, callback){
-        fs.exists('./test_files/put/fort_knox_tank.jpg', function(exists){
+      function fileExists(value, file, callback){
+        fs.exists(file, function(exists){
           exists.should.be.value;
           callback();
         });
@@ -108,9 +115,20 @@ describe('Faux-Knox', function(){
         client.deleteFile('to/a/new/path/here/tank.jpg', function(err, res){
           res.should.have.property('headers').be.a('object');
           res.should.have.property('statusCode', 204);
-          fileExists(false, done);
+          fileExists(false, './test_files/put/fort_knox_tank.jpg', done);
         });
       });
+    });
+    it('should delete a uri encoded file', function(done){
+      var fileURI = encodeURIComponent('to/infinity and beyond.jpg');
+      function deleteFile(){
+        client.deleteFile(fileURI, function(err, res){
+          res.shoud.have.property('headers').be.a('object');
+          res.should.have.property('statusCode', 204);
+          fileExists(false, decodeURIComponent(fileURI), done);
+        });
+      }
+      client.putFile('./test_files/put/fort_knox_tank.jpg', fileURI, deleteFile);
     });
     it('should not delete a file', function(done){
       client.deleteFile('not/a/real/path.js', function(err, res){
