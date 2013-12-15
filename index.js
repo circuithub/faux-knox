@@ -1,23 +1,22 @@
 var fs = require('fs'),
     async = require('async'),
-    utils = require(__dirname + '/utils');
+    utils = require(__dirname + '/utils'),
+    path = require('path'),
+    Emitter = require('events').EventEmitter,
+    knox = require('knox');
 
 exports.createClient = function(config){
   function Client(config){
     if (!config) config = {};
     if (!config.bucket) {
       config.bucket = './';
-    } else {
-      if (config.bucket[config.bucket.length - 1] !== '/') {
-        config.bucket = config.bucket + '/';
-      }
     }
     Client.prototype.getFile = function(uri, headers, callback){
         if (!callback && typeof(headers) == "function") {
           callback = headers;
           headers = {};
         }
-        var stream = fs.createReadStream(config.bucket + uri);
+        var stream = fs.createReadStream(path.join(config.bucket, uri));
         function cancelLocalListeners(){
           stream.removeListener('error', bad);
           stream.removeListener('readable', good);
@@ -40,44 +39,51 @@ exports.createClient = function(config){
         stream.on('readable', good);
     };
 
-    Client.prototype.putFile = function(from, to, callback){
+    Client.prototype.putFile = function(src, filename, headers, fn){
+      var emitter = new Emitter;
+
+      if ('function' == typeof headers) {
+        fn = headers;
+        headers = {};
+      }
+
       function checkToPath(cb){
-        utils.checkToPath(config.bucket + to, cb);
+        utils.checkToPath(path.join(config.bucket, filename), cb);
       }
       function checkFromPath(cb){
-        fs.stat(from, cb);
-      }
+        fs.stat(src, cb);
+      };
       async.series([checkFromPath, checkToPath], function(err){
         if (err) {
-          return callback(err);
+          console.log("ERROR", err);
+          return fn(err);
         }
-        var r = fs.createReadStream(from),
-            w = fs.createWriteStream(config.bucket + to);
-        w.on('finish', function(){
-          callback(null, {headers:{}, statusCode:201});
-        });
-        w.on('error', function(e){
-          callback(null, {headers:{}, statusCode:404});
-        });
+        var r = fs.createReadStream(src),
+            w = fs.createWriteStream(path.join(config.bucket, filename));
+        w.resume = function(){};
         r.pipe(w);
+        fn(null, w);
       });
-    };
+      return emitter;
+    }
     Client.prototype.putBuffer = function(buffer, to, headers, callback){
-      utils.checkToPath(config.bucket + to, function(){
-        fs.writeFile(config.bucket + to, buffer, function(err){
+      utils.checkToPath(path.join(config.bucket, to), function(){
+        fs.writeFile(path.join(config.bucket, to), buffer, function(err){
           if (err) {
             return callback(err);
           }
           return callback(null, {headers:{}, statusCode:201});
         });
       });
-    };
+    }
     Client.prototype.deleteFile = function(file, callback){
-      fs.unlink(config.bucket + file, function(err){
+      fs.unlink(path.join(config.bucket, file), function(err){
         return callback(null, {headers:{}, statusCode: err ? 404 : 204});
       });
-    };
+    }
   }
+  Client.prototype.http = knox.prototype.http;
+  Client.prototype.https = knox.prototype.https;
   return new Client(config);
 };
 
