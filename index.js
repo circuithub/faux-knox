@@ -11,6 +11,7 @@ exports.createClient = function(config){
     if (!config.bucket) {
       config.bucket = './';
     }
+    this.urlBase = "aws-faux.com"
     Client.prototype.getFile = function(uri, headers, callback){
         if (!callback && typeof(headers) == "function") {
           callback = headers;
