@@ -18,26 +18,53 @@ exports.createClient = function(config){
           headers = {};
         }
         var stream = fs.createReadStream(path.join(config.bucket, uri));
+        var responded = false;
         function cancelLocalListeners(){
           stream.removeListener('error', bad);
           stream.removeListener('readable', good);
+          stream.removeListener('close', close);
         }
         function bad(e){
-          cancelLocalListeners();
-          if(e.code === 'ENOENT') {
-            stream.statusCode = 404;
-            stream.headers = {};
-            return callback(null, stream);
+          if (!responded) {
+            responded = true;
+            cancelLocalListeners();
+            if(e.code === 'ENOENT') {
+              stream.statusCode = 404;
+              stream.headers = {};
+              return callback(null, stream);
+            }
           }
         }
         function good(){
-          stream.headers = {};
-          stream.statusCode = 200;
-          cancelLocalListeners();
-          return callback(null, stream);
+          if (!responded) {
+            responded = true;
+            stream.headers = {};
+            stream.statusCode = 200;
+            cancelLocalListeners();
+            return callback(null, stream);
+          }
+        }
+        function close(){
+          if (!responded) {
+            responded = true;
+            cancelLocalListeners();
+
+            // Deal with empty files
+            var dummyStream = new Emitter;
+            dummyStream.headers = {};
+            dummyStream.statusCode = 200;            
+            var r = callback(null, dummyStream);
+            setTimeout(function(){
+              dummyStream.emit("data", "");
+              dummyStream.emit("end");
+              dummyStream.emit("close");
+            }, 0);
+            return r;
+          }
         }
         stream.on('error', bad);
         stream.on('readable', good);
+        stream.on('close', close);
     };
 
     Client.prototype.putFile = function(src, filename, headers, fn){
